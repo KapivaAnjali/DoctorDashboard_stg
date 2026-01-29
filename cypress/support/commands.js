@@ -23,3 +23,33 @@
 //
 // -- This will overwrite an existing command --
 // Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
+// Universal Smart Fill
+Cypress.Commands.add('smartFill', (selector, value, type = 'input') => {
+  cy.get(selector).then(($el) => {
+    const currentVal = $el.val() || $el.text();
+    const isEmpty = !currentVal || currentVal.trim() === "" || currentVal.toLowerCase().includes('select');
+
+    if (isEmpty) {
+      if (type === 'input') {
+        cy.wrap($el).clear().type(value);
+      } else if (type === 'select') {
+        cy.wrap($el).click({ force: true });
+        const regex = new RegExp(`^${value}$`); // Exact match
+        cy.contains('.select__option', regex).scrollIntoView().click({ force: true });
+      }
+      cy.log(`✅ Filled: ${value}`);
+    } else {
+      cy.log(`⏭️ Skipped: ${value} (Already has value)`);
+    }
+  });
+});
+
+// Add Item only if not already in a list (for Vitals/Concerns)
+Cypress.Commands.add('addItemIfMissing', (triggerBtnSelector, itemName) => {
+  cy.get('body').then(($body) => {
+    if (!$body.text().includes(itemName)) {
+      cy.contains(triggerBtnSelector).click();
+      cy.get('.select__input-container').last().click().type(`${itemName}{enter}`);
+    }
+  });
+});

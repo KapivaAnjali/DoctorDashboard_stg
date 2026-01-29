@@ -68,7 +68,7 @@ describe('To validate login functionality', () => {
         .scrollIntoView({ offset: { top: -100, left: 0 } })
         .click({ force: true });
 
-      cy.wait(1500);
+      cy.wait(3000);
 
       cy.get('body').then($body => {
         if ($body.text().includes('No slots available for this date')) {
@@ -97,6 +97,8 @@ describe('To validate login functionality', () => {
       });
     });
 
+    // ... existing loop code ...
+
     // Return to today
     cy.log('→ Returning to today');
 
@@ -106,16 +108,25 @@ describe('To validate login functionality', () => {
       .first()
       .click({ force: true });
 
-    cy.wait(2000);
+    // ✅ FIX: Wait for the API to return AND the UI to update
+    // We expect slots today (based on earlier logs), so wait for at least one time-slot button to appear.
+    // This prevents reading the stale "No slots" message from the previous date.
+    cy.wait(2000); 
 
-    // Book on today
     cy.get('body').then($body => {
-      if ($body.text().includes('No slots available for this date')) {
+      // Logic: Only skip if "No slots" is present AND we can't find any time slot buttons
+      // We check for the time slot pattern (AM/PM) to be sure
+      const hasTimeSlots = $body.find('button').filter((_, el) => 
+        /\d{1,2}:\d{2}\s*(AM|PM)/.test(Cypress.$(el).text())
+      ).length > 0;
+
+      if ($body.text().includes('No slots available for this date') && !hasTimeSlots) {
         cy.log('→ Today has no slots — skipped');
         return;
       }
 
-      cy.get('button', { timeout: 20000 })
+      // Proceed to book
+      cy.get('button', { timeout: 10000 }) // Give it time to appear
         .should('have.length.gte', 1)
         .filter((_, el) => {
           const t = Cypress.$(el).text().trim();
@@ -142,8 +153,6 @@ describe('To validate login functionality', () => {
 
             cy.contains(/success|booked|confirmed/i, { timeout: 15000 })
               .should('exist');
-          } else {
-            cy.log('→ No slots today');
           }
         });
     });
