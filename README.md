@@ -47,6 +47,7 @@ The automation framework aims to:
 
 ---
 ## Project Structure
+
 cypress/
 ├── downloads/
 │   ├── Doc_sample.png
