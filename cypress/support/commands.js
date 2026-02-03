@@ -53,3 +53,17 @@ Cypress.Commands.add('addItemIfMissing', (triggerBtnSelector, itemName) => {
     }
   });
 });
+Cypress.Commands.add('verifyWebEngageEvent', (eventName) => {
+  cy.then(() => {
+    const events = Cypress.env('webengageEvents') || []
+
+    const found = events.find(e =>
+      JSON.stringify(e.payload).includes(eventName)
+    )
+
+    expect(
+      found,
+      `Expected WebEngage event "${eventName}" to be fired`
+    ).to.exist
+  })
+})
