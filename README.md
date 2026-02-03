@@ -46,6 +46,47 @@ The automation framework aims to:
 13. Consultation status updates are verified  
 
 ---
+## Project Structure
+cypress/
+├── downloads/
+│   ├── Doc_sample.png
+│   ├── kapiva-desktop-view (1).png
+│   ├── prescription-16-January-2026.pdf
+│   ├── prescription-21-January-2026.pdf
+│   ├── prescription-22-January-2026.pdf
+│   └── prescription-28-January-2026.pdf
+│
+├── e2e/
+│   ├── Innovation_Fund/
+│   │   └── User.cy.js
+│   │
+│   ├── dashboard_login/
+│   │   ├── FirstMilestone_Verifying_Prescription.cy.js
+│   │   ├── HCT_booking.cy.js
+│   │   └── SecondMilestone.cy.js
+│   │
+│   ├── EventTesting.cy.js
+│   ├── Testing.cy.js
+│   ├── event.cy.js
+│   ├── example.js
+│   ├── profile_creation.cy.js
+│   └── spec.cy.js
+│
+├── fixtures/
+│   ├── doctors.json
+│   ├── example.json
+│   └── kapiva-desktop-view (1).png
+│
+└── support/
+    ├── commands.js
+    └── e2e.js
+│
+.gitignore
+README.md
+cypress.config.js
+package-lock.json
+package.json
+
 
 ## Rationale
 
@@ -60,8 +101,7 @@ Manual verification of consultation booking and doctor assignment workflows is t
 
 ## Technology Stack
 
-- Cypress – Web Automation  
-- Appium – Mobile Automation (if applicable)  
+- Cypress – Web Automation   
 - JavaScript  
 - Node.js  
 - Git  
