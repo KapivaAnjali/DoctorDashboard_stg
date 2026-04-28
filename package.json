@@ -3,15 +3,21 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:cypress": "cypress run",
+    "test:pw": "playwright test",
+    "test:pw:headed": "playwright test --headed",
+    "test:pw:ui": "playwright test --ui"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "cypress": "^15.8.2",
     "cypress-file-upload": "^5.0.8",
     "cypress-real-events": "^1.15.0",
-    "cypress-xpath": "^2.0.1"
+    "cypress-xpath": "^2.0.1",
+    "dotenv": "^17.4.2"
   }
 }
