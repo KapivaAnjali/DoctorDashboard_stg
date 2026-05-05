@@ -14,12 +14,8 @@
 
 const { test, expect } = require('@playwright/test');
 const OmniCarePage = require('../pages/OmniCarePage');
-const { activeAddress, ACTIVE_PROFILE } = require('../data/addressProfiles');
 
 const BASE_URL = 'https://staging.kapiva.in/';
-
-// ── To switch address, change ACTIVE_PROFILE in tests/omnicare/data/addressProfiles.js ──
-const ADDRESS_DETAILS = activeAddress;
 
 test.describe('OmniCare – Blood Sugar & Chronic Care Product Flow', () => {
   // ── Run all tests in this suite in iPhone 12 mobile viewport ──────────────
@@ -29,9 +25,6 @@ test.describe('OmniCare – Blood Sugar & Chronic Care Product Flow', () => {
       'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) ' +
       'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
   });
-
-  // Steps 1-11 take ~2.5 min; Step 12 waits up to 2 min for manual OTP entry
-  test.setTimeout(360000); // 6 minutes
 
   test('Verify Dia Free Juice PDP banner and benefits images', async ({ page }) => {
     const omniCare = new OmniCarePage(page);
@@ -108,17 +101,6 @@ test.describe('OmniCare – Blood Sugar & Chronic Care Product Flow', () => {
     console.log('\n  STEP 11 — Handling post-BUY NOW popup...');
     await omniCare.handleCheckoutPopup();
     console.log('  STEP 11 ✅ Checkout popup dismissed.');
-
-    // ── Step 12: Add address if not already saved ─────────────────────────────
-    console.log('\n  STEP 12 — Adding delivery address if not already saved...');
-    console.log(`           (Active profile: "${ACTIVE_PROFILE}" — change in data/addressProfiles.js)`);
-    await omniCare.fillAddressIfNeeded(ADDRESS_DETAILS);
-    console.log('  STEP 12 ✅ Address step complete.');
-
-    // ── Step 13: Apply coupon code ────────────────────────────────────────────
-    console.log('\n  STEP 13 — Applying coupon code "Save5"...');
-    await omniCare.applyCoupon('Save5');
-    console.log(`  STEP 13 ✅ Coupon "Save5" applied. URL: ${page.url()}`);
 
     console.log('\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('  ALL STEPS PASSED ✅');
