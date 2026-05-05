@@ -388,6 +388,7 @@ class OmniCarePage {
         // Wait for navigation + give MutationObserver time to auto-close popup
         await this.page.waitForTimeout(3000);
         console.log(`  [NAV] Clicked product: "${productText}"`);
+        await this._closeMilestonePopup('product page load');
         return;
       }
     }
@@ -399,6 +400,7 @@ class OmniCarePage {
     await fallback.click({ force: true });
     await this.page.waitForTimeout(3000);
     console.log(`  [NAV] Clicked product (fallback): "${productText}"`);
+    await this._closeMilestonePopup('product page load');
   }
 
   // ─── Assertions ───────────────────────────────────────────────────────────────
@@ -531,114 +533,120 @@ class OmniCarePage {
   // ─── Buy Now ──────────────────────────────────────────────────────────────────
 
   /**
-   * Scrolls to and clicks the "BUY NOW" button in the PDP sticky bar.
+   * Clicks the "BUY NOW" button in the PDP sticky bar.
+   * Uses JS evaluate so the click is never blocked by viewport/interception issues.
    */
   async clickBuyNow() {
-    const candidates = [
-      this.page.getByRole('button', { name: /buy now/i }).first(),
-      this.page.locator('button').filter({ hasText: /buy now/i }).first(),
-      this.page.locator('a').filter({ hasText: /buy now/i }).first(),
-      this.page.getByText('BUY NOW', { exact: false }).first(),
-    ];
+    // Scroll to a mid-page position so the sticky bar is fully rendered
+    await this.page.evaluate(() => window.scrollTo(0, 500));
+    await this.page.waitForTimeout(800);
 
-    for (let pass = 0; pass < 6; pass++) {
-      for (const el of candidates) {
-        if ((await el.count()) > 0 && await el.isVisible().catch(() => false)) {
-          await el.scrollIntoViewIfNeeded();
-          await this.page.waitForTimeout(500);
-          await el.click({ force: true });
-          await this.page.waitForTimeout(3000);
-          console.log('  [ACTION] Clicked "BUY NOW"');
-          return;
-        }
+    // Try JS click on the actual <button> or <a> element containing "BUY NOW"
+    const clicked = await this.page.evaluate(() => {
+      const allButtons = [...document.querySelectorAll('button, a')];
+      const buyNow = allButtons.find(el => {
+        const text = (el.innerText || el.textContent || '').trim().toUpperCase();
+        return text === 'BUY NOW' || text.includes('BUY NOW');
+      });
+      if (buyNow) {
+        buyNow.click();
+        return (buyNow.innerText || buyNow.textContent || '').trim();
       }
-      await this.page.evaluate(() => window.scrollBy(0, 300));
-      await this.page.waitForTimeout(400);
+      return null;
+    });
+
+    if (clicked) {
+      await this.page.waitForTimeout(3000);
+      console.log(`  [ACTION] Clicked "BUY NOW" via JS (matched: "${clicked}")`);
+      return;
     }
 
-    throw new Error('Could not find or click the BUY NOW button.');
+    // Playwright fallback in case JS evaluate didn't find it
+    const btn = this.page.locator('button, a').filter({ hasText: /buy now/i }).first();
+    await btn.waitFor({ state: 'visible', timeout: 10000 });
+    await btn.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(500);
+    await btn.click({ force: true });
+    await this.page.waitForTimeout(3000);
+    console.log('  [ACTION] Clicked "BUY NOW" via Playwright fallback');
   }
 
   // ─── Checkout popup + address ─────────────────────────────────────────────────
 
   /**
    * After BUY NOW a Milestone carousel popup appears (Slide 1, 2, 3…).
-   * Polls every 500 ms for up to 15 s. As soon as a slide is detected it
-   * clicks the topmost button (the circular X), then keeps polling until
-   * all slides are gone or the timeout is reached.
+   * Delegates to the shared _closeMilestonePopup helper.
    */
   async handleCheckoutPopup() {
-    const POLL_MS   = 500;
-    const MAX_MS    = 15000;
-    let   elapsed   = 0;
-    let   clicks    = 0;
-    let   idleAfterClose = 0; // consecutive polls with no popup after first click
+    await this._closeMilestonePopup('BUY NOW');
+    console.log('  [POPUP] Checkout popup handled.');
+  }
 
-    console.log('  [POPUP] Watching for Milestone popup (up to 15 s)...');
+  /**
+   * Shared helper — waits for the Milestone popup, scrolls through every
+   * slide using the ">" next arrow, then closes via button[aria-label='Close'].
+   *
+   * @param {string} context  Label used in console logs for traceability.
+   */
+  async _closeMilestonePopup(context = '') {
+    const closeBtn = this.page.locator("//button[@aria-label='Close']//*[name()='svg']");
+    const POLL_MS  = 500;
+    const MAX_MS   = 15000;
+    let elapsed    = 0;
 
+    console.log(`  [MILESTONE] Watching for popup${context ? ` (after ${context})` : ''} — up to 15 s...`);
+
+    // Wait for popup to appear
     while (elapsed < MAX_MS) {
-      const visible = await this.page.evaluate(
-        () => document.body.textContent.includes('MILESTONE')
-      );
-
-      if (visible) {
-        idleAfterClose = 0; // reset idle counter whenever popup reappears
-
-        // Find MILESTONE text node → walk up to modal → click topmost button (X)
-        const clicked = await this.page.evaluate(() => {
-          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          let node;
-          while ((node = walker.nextNode())) {
-            if (!(node.textContent || '').includes('MILESTONE')) continue;
-            let el = node.parentElement;
-            while (el && el !== document.body) {
-              const rect = el.getBoundingClientRect();
-              if (rect.height > 200 && rect.width > 100) {
-                const buttons = [...el.querySelectorAll('button')];
-                if (!buttons.length) break;
-                const top = rect.top;
-                const xBtn = buttons.reduce((a, b) =>
-                  Math.abs(a.getBoundingClientRect().top - top) <
-                  Math.abs(b.getBoundingClientRect().top - top) ? a : b
-                );
-                xBtn.click();
-                return true;
-              }
-              el = el.parentElement;
-            }
-          }
-          return false;
-        });
-
-        clicks++;
-        console.log(clicked
-          ? `  [POPUP] ✅ Clicked X (slide ${clicks}).`
-          : `  [POPUP] X not found — pressing Escape (slide ${clicks}).`
-        );
-        if (!clicked) await this.page.keyboard.press('Escape');
-
-        await this.page.waitForTimeout(1200);
-        elapsed += 1200;
-      } else {
-        // No popup visible
-        if (clicks > 0) {
-          idleAfterClose++;
-          // Confirm popup is gone after 2 consecutive clean polls (~1 s of silence)
-          if (idleAfterClose >= 2) {
-            console.log(`  [POPUP] ✅ Milestone popup fully dismissed (${clicks} click(s)).`);
-            break;
-          }
-        }
-        await this.page.waitForTimeout(POLL_MS);
-        elapsed += POLL_MS;
-      }
+      if (await closeBtn.isVisible().catch(() => false)) break;
+      await this.page.waitForTimeout(POLL_MS);
+      elapsed += POLL_MS;
     }
 
     if (elapsed >= MAX_MS) {
-      console.log(`  [POPUP] ⚠️  Milestone popup still visible after ${MAX_MS / 1000} s — continuing anyway.`);
+      console.log(`  [MILESTONE] No popup appeared within ${MAX_MS / 1000} s — skipping.`);
+      return;
     }
 
-    console.log('  [POPUP] Checkout popup handled.');
+    // Scroll through all slides using the ">" next button
+    let slide = 1;
+    console.log(`  [MILESTONE] Popup detected. Scrolling through slides...`);
+
+    while (true) {
+      // Look for a "next" arrow button (">") inside the popup
+      const nextBtn = await this.page.evaluate(() => {
+        const buttons = [...document.querySelectorAll('button')];
+        // The next arrow is the rightmost/last navigation button in the popup
+        // It typically contains ">" or a right-pointing SVG chevron
+        const next = buttons.find(btn => {
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          const text  = (btn.innerText || '').trim();
+          return label.includes('next') || label.includes('right') || text === '>' || text === '›';
+        });
+        if (next) { next.click(); return true; }
+        return false;
+      });
+
+      if (nextBtn) {
+        console.log(`  [MILESTONE] Moved to slide ${++slide}.`);
+        await this.page.waitForTimeout(800);
+      } else {
+        // No next button found — we're on the last slide
+        break;
+      }
+
+      // Safety cap: max 10 slides
+      if (slide > 10) break;
+    }
+
+    // Now close the popup
+    console.log(`  [MILESTONE] On last slide. Clicking Close...`);
+    await this.page.evaluate(() => {
+      const btn = document.querySelector("button[aria-label='Close']");
+      if (btn) btn.click();
+    });
+    await this.page.waitForTimeout(800);
+    console.log(`  [MILESTONE] ✅ Milestone popup closed after ${slide} slide(s).`);
   }
 
   /**
