@@ -4,7 +4,8 @@
  * HOW TO USE:
  *   1. Add or edit any profile below.
  *   2. Change ACTIVE_PROFILE to the key you want to use.
- *   3. Run the test — no other file needs to change.
+ *   3. Run the test — when it reaches Step 12, enter the OTP manually
+ *      in the browser window. The test waits up to 2 minutes for you.
  *
  * ACTIVE_PROFILE options:
  *   'anjali' | 'rahul' | 'priya' | 'arjun' | 'sneha' |

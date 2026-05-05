@@ -650,65 +650,139 @@ class OmniCarePage {
   }
 
   /**
-   * Adds a delivery address on the checkout / cart page.
+   * Full guest checkout address flow:
+   *   Step A — Enter phone number → click "Get OTP" / "Continue"
+   *   Step B — Enter OTP → click "Verify"
+   *   Step C — Fill address form (name, email, pincode, address)
    *
-   * - If an address card is already visible, skips the form.
-   * - If not, clicks the first "+Add" / "Add new address" button and fills the form.
-   *
-   * Edit the values passed from the spec file at the top of OmniCare.spec.js.
-   *
-   * @param {{ name: string, phone: string, email: string, address: string, pincode: string }} details
+   * @param {{ name, phone, email, address, pincode, otp }} details
    */
   async fillAddressIfNeeded(details) {
     await this.page.waitForTimeout(2000);
 
-    // ── Check whether an address is already saved ──────────────────────────
-    const savedAddress = this.page.locator(
-      '[class*="address-card"], [class*="addressCard"], [class*="saved-address"]'
-    ).first();
+    // ── Step A: Enter phone number and request OTP ─────────────────────────
+    console.log('  [ADDRESS] Step A — Entering phone number...');
+    await this._fillField(
+      ['input[name="phone"]', 'input[name="mobile"]', 'input[type="tel"]',
+       'input[placeholder*="phone" i]', 'input[placeholder*="mobile" i]',
+       'input[placeholder*="number" i]'],
+      details.phone
+    );
+    await this.page.waitForTimeout(500);
 
-    if ((await savedAddress.count()) > 0 && await savedAddress.isVisible().catch(() => false)) {
-      console.log('  [ADDRESS] Saved address found — skipping form fill.');
+    // Click the arrow button next to the phone input (icon-only, no text)
+    await this.page.waitForTimeout(800);
+    const otpRequested = await this.page.evaluate(() => {
+      const tel = document.querySelector(
+        'input[type="tel"], input[name="phone"], input[name="mobile"], input[placeholder*="phone" i]'
+      );
+      if (!tel) return null;
+
+      // Walk up the DOM tree looking for a sibling/container button
+      let el = tel;
+      for (let i = 0; i < 5; i++) {
+        el = el.parentElement;
+        if (!el) break;
+
+        // Any <button> or <input[type=submit]> inside this container
+        const btn = el.querySelector(
+          'button, input[type="submit"], [role="button"]'
+        );
+        if (btn) {
+          btn.click();
+          return btn.getAttribute('aria-label') || btn.innerText?.trim() || 'arrow-button';
+        }
+      }
+
+      // Fallback: submit the closest form
+      const form = tel.closest('form');
+      if (form) {
+        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"], button');
+        if (submitBtn) { submitBtn.click(); return 'form-submit'; }
+        form.submit();
+        return 'form.submit()';
+      }
+      return null;
+    });
+
+    if (otpRequested) {
+      console.log(`  [ADDRESS] Arrow/submit button clicked (matched: "${otpRequested}").`);
+    } else {
+      console.log('  [ADDRESS] Arrow button not found — pressing Enter on phone field...');
+      await this.page.keyboard.press('Enter');
+    }
+
+    // ── Step B: Wait for OTP to be entered manually in the browser ────────
+    console.log('');
+    console.log('  ╔═══════════════════════════════════════════════════════╗');
+    console.log('  ║  OTP sent to your phone. Please enter it in the      ║');
+    console.log('  ║  browser window within the next 2 minutes.           ║');
+    console.log('  ║  Test continues automatically when the checkout page  ║');
+    console.log('  ║  loads (saved address detected or form appears).      ║');
+    console.log('  ╚═══════════════════════════════════════════════════════╝');
+    console.log('');
+
+    // Wait up to 2 minutes for EITHER a saved address card OR a new address form
+    let addressState = 'unknown';
+    const deadline = Date.now() + 120000;
+
+    while (Date.now() < deadline) {
+      addressState = await this.page.evaluate(() => {
+        // Saved address already on page → skip form filling
+        const saved = document.querySelector(
+          '[class*="address-card"], [class*="addressCard"], [class*="saved-address"], ' +
+          '[class*="address-item"], [class*="addressItem"], [class*="delivery-address"]'
+        );
+        if (saved && saved.getBoundingClientRect().height > 0) return 'saved';
+
+        // New address form appeared after OTP
+        const formInput = document.querySelector(
+          'input[name="name"], input[placeholder*="Name" i], ' +
+          'input[name="address"], input[placeholder*="Address" i]'
+        );
+        if (formInput && formInput.getBoundingClientRect().height > 0) return 'form';
+
+        return 'waiting';
+      });
+
+      if (addressState !== 'waiting') break;
+      await this.page.waitForTimeout(1000);
+    }
+
+    if (addressState === 'saved') {
+      console.log('  [ADDRESS] ✅ Saved address detected — skipping form fill.');
       return;
     }
 
-    // ── Click "+ Add" / "Add new address" button ───────────────────────────
-    const addBtnCandidates = [
-      this.page.getByText('+Add', { exact: false }).first(),
-      this.page.getByText('+ Add', { exact: false }).first(),
-      this.page.getByText('Add new address', { exact: false }).first(),
-      this.page.getByText('Add Address', { exact: false }).first(),
-      this.page.locator('button').filter({ hasText: /\+\s*add/i }).first(),
-    ];
-
-    let addClicked = false;
-    for (const btn of addBtnCandidates) {
-      if ((await btn.count()) > 0 && await btn.isVisible().catch(() => false)) {
-        await btn.scrollIntoViewIfNeeded();
-        await btn.click({ force: true });
-        await this.page.waitForTimeout(2000);
-        console.log('  [ADDRESS] Clicked "+Add" button.');
-        addClicked = true;
-        break;
-      }
+    if (addressState === 'form') {
+      // ── Step C: Fill address form (only when no saved address) ────────────
+      console.log('  [ADDRESS] Address form detected. Filling fields...');
+      await this._fillField(
+        ['input[name="name"]', 'input[placeholder*="Name" i]', 'input[placeholder*="Full name" i]',
+         'input[placeholder*="Enter name" i]'],
+        details.name
+      );
+      await this._fillField(
+        ['input[name="email"]', 'input[type="email"]', 'input[placeholder*="Email" i]',
+         'input[placeholder*="Enter email" i]'],
+        details.email
+      );
+      await this._fillField(
+        ['input[name="pincode"]', 'input[name="zip"]', 'input[placeholder*="Pincode" i]',
+         'input[placeholder*="PIN" i]', 'input[placeholder*="Zip" i]'],
+        details.pincode
+      );
+      await this._fillField(
+        ['input[name="address"]', 'input[name="address1"]', 'input[name="address_line1"]',
+         'input[placeholder*="Address" i]', 'input[placeholder*="House" i]',
+         'input[placeholder*="Street" i]', 'textarea[placeholder*="Address" i]', 'textarea'],
+        details.address
+      );
+      console.log('  [ADDRESS] ✅ Address form filled.');
+      return;
     }
 
-    if (!addClicked) {
-      console.log('  [ADDRESS] ⚠️  "+Add" button not found — form may already be open.');
-    }
-
-    // ── Fill each field (all selectors scoped to input/textarea only) ─────
-    await this._fillField(['input[name="name"]', 'input[placeholder*="Name" i]', 'input[placeholder*="Full name" i]'], details.name);
-    await this._fillField(['input[name="phone"]', 'input[name="mobile"]', 'input[placeholder*="Phone" i]', 'input[placeholder*="Mobile" i]'], details.phone);
-    await this._fillField(['input[name="email"]', 'input[placeholder*="Email" i]'], details.email);
-    await this._fillField(['input[name="pincode"]', 'input[name="zip"]', 'input[placeholder*="Pincode" i]', 'input[placeholder*="PIN" i]'], details.pincode);
-    await this._fillField(
-      ['input[name="address"]', 'input[name="address1"]', 'input[placeholder*="Address" i]', 'input[placeholder*="House" i]', 'textarea'],
-      details.address
-    );
-
-    await this.page.waitForTimeout(500);
-    console.log('  [ADDRESS] ✅ Address form filled.');
+    console.log('  [ADDRESS] ⚠️  Neither saved address nor form detected — continuing.');
   }
 
   /**
@@ -746,6 +820,88 @@ class OmniCarePage {
       }
     }
     console.log(`  [FORM] ⚠️  No matching field found for value "${value}"`);
+  }
+
+  // ─── Coupon ───────────────────────────────────────────────────────────────────
+
+  /**
+   * Scrolls to the coupon input on the checkout page, enters the code,
+   * and clicks the Apply button.
+   * @param {string} couponCode
+   */
+  async applyCoupon(couponCode) {
+    // Scroll down to bring the coupon section into view
+    for (let i = 0; i < 10; i++) {
+      await this.page.evaluate(() => window.scrollBy(0, 300));
+      await this.page.waitForTimeout(300);
+
+      const found = await this.page.evaluate(() => {
+        const input = document.querySelector(
+          'input[name="coupon"], input[placeholder*="coupon" i], ' +
+          'input[placeholder*="promo" i], input[placeholder*="discount" i], ' +
+          'input[placeholder*="code" i]'
+        );
+        return !!input;
+      });
+      if (found) break;
+    }
+
+    // Fill the coupon code using the React-safe setter
+    const filled = await this.page.evaluate(({ code }) => {
+      const input = document.querySelector(
+        'input[name="coupon"], input[placeholder*="coupon" i], ' +
+        'input[placeholder*="promo" i], input[placeholder*="discount" i], ' +
+        'input[placeholder*="code" i]'
+      );
+      if (!input) return false;
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeSetter) nativeSetter.call(input, code);
+      else input.value = code;
+      input.dispatchEvent(new Event('input',  { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, { code: couponCode });
+
+    if (!filled) {
+      console.log(`  [COUPON] ⚠️  Coupon input not found.`);
+      return false;
+    }
+    console.log(`  [COUPON] Entered code: "${couponCode}"`);
+    await this.page.waitForTimeout(500);
+
+    // Click the Apply button next to the coupon input
+    const applied = await this.page.evaluate(() => {
+      const input = document.querySelector(
+        'input[name="coupon"], input[placeholder*="coupon" i], ' +
+        'input[placeholder*="promo" i], input[placeholder*="discount" i], ' +
+        'input[placeholder*="code" i]'
+      );
+      if (!input) return null;
+      // Walk up to find a sibling Apply button
+      let el = input;
+      for (let i = 0; i < 5; i++) {
+        el = el.parentElement;
+        if (!el) break;
+        const btn = [...el.querySelectorAll('button, [role="button"]')].find(b => {
+          const t = (b.innerText || b.textContent || '').trim().toUpperCase();
+          return t === 'APPLY' || t.includes('APPLY');
+        });
+        if (btn) { btn.click(); return (btn.innerText || btn.textContent || '').trim(); }
+      }
+      return null;
+    });
+
+    if (applied) {
+      console.log(`  [COUPON] ✅ Applied via "${applied}" button.`);
+      await this.page.waitForTimeout(2000);
+      return true;
+    }
+
+    // Fallback: press Enter
+    console.log('  [COUPON] Apply button not found — pressing Enter...');
+    await this.page.keyboard.press('Enter');
+    await this.page.waitForTimeout(2000);
+    return true;
   }
 }
 

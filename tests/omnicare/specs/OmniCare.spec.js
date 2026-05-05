@@ -30,6 +30,9 @@ test.describe('OmniCare – Blood Sugar & Chronic Care Product Flow', () => {
       'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
   });
 
+  // Steps 1-11 take ~2.5 min; Step 12 waits up to 2 min for manual OTP entry
+  test.setTimeout(360000); // 6 minutes
+
   test('Verify Dia Free Juice PDP banner and benefits images', async ({ page }) => {
     const omniCare = new OmniCarePage(page);
 
@@ -111,6 +114,11 @@ test.describe('OmniCare – Blood Sugar & Chronic Care Product Flow', () => {
     console.log(`           (Active profile: "${ACTIVE_PROFILE}" — change in data/addressProfiles.js)`);
     await omniCare.fillAddressIfNeeded(ADDRESS_DETAILS);
     console.log('  STEP 12 ✅ Address step complete.');
+
+    // ── Step 13: Apply coupon code ────────────────────────────────────────────
+    console.log('\n  STEP 13 — Applying coupon code "Save5"...');
+    await omniCare.applyCoupon('Save5');
+    console.log(`  STEP 13 ✅ Coupon "Save5" applied. URL: ${page.url()}`);
 
     console.log('\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('  ALL STEPS PASSED ✅');
