@@ -47,7 +47,7 @@ The automation framework aims to:
 
 ---
 ## Project Structure
-``
+```
 cypress/
 ├── downloads/
 │   ├── Doc_sample.png
@@ -87,7 +87,7 @@ README.md
 cypress.config.js
 package-lock.json
 package.json
-``
+```
 
 
 ## Rationale
